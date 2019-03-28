@@ -1,10 +1,12 @@
-// Store our API endpoint inside queryUrl
+// #################### Declare all global variables################################
+// Store our API endpoint inside queryUrl for earthquake and tectonic plates
 var queryUrl = "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_week.geojson"
+var tecPlatesURL = "https://raw.githubusercontent.com/fraxen/tectonicplates/master/GeoJSON/PB2002_boundaries.json";
 
 var markerOptions = {
   radius: 8,
   fillColor: "#ff7800",
-  color: "#000",
+  color: "#595959",
   weight: 1,
   opacity: 1,
   fillOpacity: 0.8
@@ -12,33 +14,14 @@ var markerOptions = {
 
 var magColors = ["#d5ff80","#8cff66","#ffd9b3","#ffaa80","#ff9933","#ff471a"]
 
+
+// Determine marker color based on earthquake magnitude
 function markerColor(magnitude){
-  magnitude = +magnitude;
-  if(magnitude > 5){
-    return magColors[5];
-  }
-  else if(magnitude > 4)
-  {
-    return magColors[4];
-  }
-  else if(magnitude > 3)
-  {
-    return magColors[3];
-  }
-  else if(magnitude > 2)
-  {
-    return magColors[2];
-  }
-  else if(magnitude > 1)
-  {
-    return magColors[1];
-  }
-  else
-  {
-    return magColors[0];
-  }
+  magnitude = Math.floor(+magnitude);
+  return(magnitude > 5? magColors[5]: magColors[magnitude]);
 }
 
+// Create legend based on Earthquake legend
 function createLegend(geojson){
   var legend = L.control({ position: "bottomright" });
     legend.onAdd = function() {
@@ -70,38 +53,49 @@ legend.addTo(myMap);
 
 }
 
-// Perform a GET request to the query URL
-d3.json(queryUrl).then(function(data) {
-  // Once we get a response, send the data.features object to the createFeatures function
-  createFeatures(data.features);
-});
-
-function createFeatures(earthquakeData) {
+// Add features - earthquake and tectonic plates to the map
+function createFeatures(earthquakeData, tectonic_prm) {
   // Define a function we want to run once for each feature in the features array
   // Give each feature a popup describing the place and time of the earthquake
   function onEachFeature(feature, layer) {
-    layer.bindPopup("<h3>" + feature.properties.place +
-      "</h3><hr><p>" + new Date(feature.properties.time) + "</p>");
+    layer.bindPopup("<h5>" + feature.properties.place +
+      "</h5><hr><p>" + new Date(feature.properties.time) + ", Magnitude : "+feature.properties.mag+"</p>");
   }
 
-  
   // Create a GeoJSON layer containing the features array on the earthquakeData object
   // Run the onEachFeature function once for each piece of data in the array
   var earthquakes = L.geoJSON(earthquakeData, {
     pointToLayer: function (feature, latlng) {
       markerOptions.radius = feature.properties.mag * 4.5;
       markerOptions.fillColor = markerColor(feature.properties.mag);
+      
       return L.circleMarker(latlng, markerOptions);
   },
     onEachFeature: onEachFeature
   });
 
-  // Sending our earthquakes layer to the createMap function
-  var myMap = createMap(earthquakes);
-  createLegend(earthquakes).addTo(myMap);
+  tectonic_prm.then(function(tData){
+    var tectonicPlates = L.geoJSON(tData, {
+      style: function(feature) {
+        return {
+          stroke: true,
+          color: "#b36b00",
+          weight: 3
+        };
+      },
+      onEachFeature: function(feature, layer) {
+        layer.bindPopup("Tectonic Plate layer: " + feature.properties.Name);
+      }
+    });
+
+    // Sending our earthquakes layer to the createMap function
+    var myMap = createMap(earthquakes, tectonicPlates);
+    createLegend(earthquakes).addTo(myMap);
+  });
+  
 }
 
-function createMap(earthquakes) {
+function createMap(earthquakes, tectonicPlates) {
 
   // Define streetmap and darkmap layers
   var grayscale = L.tileLayer("https://api.tiles.mapbox.com/v4/{id}/{z}/{x}/{y}.png?access_token={accessToken}", {
@@ -135,7 +129,8 @@ function createMap(earthquakes) {
 
   // Create overlay object to hold our overlay layer
   var overlayMaps = {
-    Earthquakes: earthquakes
+    Earthquakes: earthquakes,
+    TectonicPlates : tectonicPlates
   };
 
   // Create our map, giving it the streetmap and earthquakes layers to display on load
@@ -144,7 +139,7 @@ function createMap(earthquakes) {
       37.09, -95.71
     ],
     zoom: 3,
-    layers: [grayscale, earthquakes]
+    layers: [satellite, earthquakes,tectonicPlates]
   });
 
   // Create a layer control
@@ -156,3 +151,17 @@ function createMap(earthquakes) {
 
   return myMap;
 }
+
+function initMap(){
+  
+  var tectonic_prm = d3.json(tecPlatesURL);
+
+  // Perform a GET request to the query URL
+  d3.json(queryUrl).then(function(data) {
+    // Once we get a response, send the data.features object to the createFeatures function
+    createFeatures(data.features, tectonic_prm);
+
+  });
+}
+
+initMap();
